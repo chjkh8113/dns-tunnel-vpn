@@ -1,0 +1,15 @@
+[Unit]
+Description=dnstt DNS tunnel server
+After=network.target wstunnel.service
+Wants=wstunnel.service
+
+[Service]
+Type=simple
+# Replace t.example.com with your tunnel domain
+ExecStart=/usr/local/bin/dnstt-server -udp :5300 -privkey-file /root/dnstt-server.key t.example.com 127.0.0.1:5555
+Restart=always
+RestartSec=5
+User=root
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,21 @@
+# WireGuard Server Configuration
+# Copy to /etc/wireguard/wg0.conf and replace placeholders
+
+[Interface]
+Address = 10.66.66.1/24
+ListenPort = 51820
+PrivateKey = <SERVER_PRIVATE_KEY>
+
+# NAT rules for forwarding traffic
+PostUp = iptables -A FORWARD -i wg0 -j ACCEPT; iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+PostDown = iptables -D FORWARD -i wg0 -j ACCEPT; iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE
+
+[Peer]
+# Client 1
+PublicKey = <CLIENT_PUBLIC_KEY>
+AllowedIPs = 10.66.66.2/32
+
+# Add more peers as needed:
+# [Peer]
+# PublicKey = <CLIENT2_PUBLIC_KEY>
+# AllowedIPs = 10.66.66.3/32

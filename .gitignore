@@ -1,0 +1,28 @@
+# Private keys - NEVER commit these!
+*.key
+*.pem
+*_private*
+*_secret*
+
+# Actual config files (only commit .example files)
+wg0.conf
+wg-tunnel.conf
+!*.example
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Temporary files
+tmp/
+temp/

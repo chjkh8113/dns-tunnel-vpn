@@ -1,0 +1,16 @@
+# WireGuard Client Configuration
+# Save to ~/wireguard/wg-tunnel.conf and replace placeholders
+
+[Interface]
+PrivateKey = <CLIENT_PRIVATE_KEY>
+Address = 10.66.66.2/24
+DNS = 8.8.8.8
+
+[Peer]
+PublicKey = <SERVER_PUBLIC_KEY>
+# Connect through local wstunnel
+Endpoint = 127.0.0.1:51820
+# Route all traffic through VPN
+AllowedIPs = 0.0.0.0/0, ::/0
+# Keep connection alive
+PersistentKeepalive = 25
