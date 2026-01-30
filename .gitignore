@@ -3,6 +3,8 @@
 *.pem
 *_private*
 *_secret*
+.env
+.env.*
 
 # Actual config files (only commit .example files)
 wg0.conf
