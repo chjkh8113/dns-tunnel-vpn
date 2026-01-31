@@ -29,3 +29,6 @@ Thumbs.db
 tmp/
 temp/
 snowflake_key
+
+# Build output (keep exe in root only)
+bin/
