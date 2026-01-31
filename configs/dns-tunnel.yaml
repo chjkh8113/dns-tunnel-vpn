@@ -18,10 +18,10 @@ scanner:
     - "builtin"  # Use built-in public DNS resolvers
 
 health:
-  check_interval: "20s"
-  fail_threshold: 2
-  recovery_threshold: 1
-  timeout: "10s"
+  check_interval: "5s"      # Check every 5 seconds for fast detection
+  fail_threshold: 2         # 2 failures = unhealthy (10s max)
+  recovery_threshold: 1     # 1 success = healthy again
+  timeout: "5s"             # 5s timeout per health check
 
 cloudflare:
   enabled: false

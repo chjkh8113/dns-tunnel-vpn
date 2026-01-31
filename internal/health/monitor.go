@@ -3,7 +3,10 @@ package health
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"log"
+	"net"
 	"sync"
 	"time"
 
@@ -104,13 +107,91 @@ func (m *Monitor) check() {
 	}
 }
 
-// checkResolver performs a connectivity check on the resolver.
+// checkResolver performs an ACTIVE connectivity check through the SOCKS proxy.
 func (m *Monitor) checkResolver(r *resolver.Resolver) error {
-	// For now, just check if tunnel is still connected
-	// A more complete implementation would send test DNS queries
+	// First check if tunnel process is running
 	if !m.tunnelMgr.IsConnected() {
 		return &HealthError{message: "tunnel disconnected"}
 	}
+
+	// Active check: Try to connect through SOCKS5 proxy
+	proxyAddr := m.tunnelMgr.LocalAddr()
+	if proxyAddr == "" {
+		proxyAddr = "127.0.0.1:7000"
+	}
+
+	// Test by connecting to a known endpoint through the SOCKS proxy
+	err := m.testSOCKS5Connection(proxyAddr)
+	if err != nil {
+		return &HealthError{message: fmt.Sprintf("SOCKS5 test failed: %v", err)}
+	}
+
+	return nil
+}
+
+// testSOCKS5Connection tests if SOCKS5 proxy is working by connecting to a test endpoint.
+func (m *Monitor) testSOCKS5Connection(proxyAddr string) error {
+	// Connect to the SOCKS5 proxy
+	conn, err := net.DialTimeout("tcp", proxyAddr, m.config.Timeout)
+	if err != nil {
+		return fmt.Errorf("failed to connect to proxy: %w", err)
+	}
+	defer conn.Close()
+
+	// Set deadline for the entire handshake
+	deadline := time.Now().Add(m.config.Timeout)
+	conn.SetDeadline(deadline)
+
+	// SOCKS5 handshake - no auth
+	// Send: version(1) + nmethods(1) + methods(1)
+	_, err = conn.Write([]byte{0x05, 0x01, 0x00})
+	if err != nil {
+		return fmt.Errorf("failed to send SOCKS5 greeting: %w", err)
+	}
+
+	// Read response: version(1) + method(1)
+	resp := make([]byte, 2)
+	_, err = io.ReadFull(conn, resp)
+	if err != nil {
+		return fmt.Errorf("failed to read SOCKS5 response: %w", err)
+	}
+
+	if resp[0] != 0x05 {
+		return fmt.Errorf("invalid SOCKS5 version: %d", resp[0])
+	}
+
+	if resp[1] == 0xFF {
+		return fmt.Errorf("SOCKS5 no acceptable auth method")
+	}
+
+	// SOCKS5 connect request to a known endpoint (Google DNS)
+	// cmd=CONNECT(0x01), rsv=0, atyp=IPv4(0x01), addr=8.8.8.8, port=53
+	connectReq := []byte{
+		0x05, 0x01, 0x00, 0x01, // version, cmd=connect, rsv, atyp=ipv4
+		8, 8, 8, 8, // 8.8.8.8
+		0x00, 0x35, // port 53
+	}
+	_, err = conn.Write(connectReq)
+	if err != nil {
+		return fmt.Errorf("failed to send SOCKS5 connect: %w", err)
+	}
+
+	// Read connect response
+	respBuf := make([]byte, 10) // minimum for IPv4 response
+	_, err = io.ReadFull(conn, respBuf)
+	if err != nil {
+		return fmt.Errorf("failed to read SOCKS5 connect response: %w", err)
+	}
+
+	if respBuf[0] != 0x05 {
+		return fmt.Errorf("invalid SOCKS5 version in response: %d", respBuf[0])
+	}
+
+	if respBuf[1] != 0x00 {
+		return fmt.Errorf("SOCKS5 connect failed with code: %d", respBuf[1])
+	}
+
+	// Connection through proxy successful!
 	return nil
 }
 

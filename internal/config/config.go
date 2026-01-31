@@ -131,10 +131,10 @@ func DefaultConfig() *Config {
 			MinResolvers:    3,
 		},
 		Health: HealthConfig{
-			CheckInterval:     30 * time.Second,
-			FailThreshold:     3,
-			RecoveryThreshold: 2,
-			Timeout:           10 * time.Second,
+			CheckInterval:     5 * time.Second,
+			FailThreshold:     2,
+			RecoveryThreshold: 1,
+			Timeout:           5 * time.Second,
 		},
 		Cloudflare: CloudflareConfig{
 			Enabled: false,

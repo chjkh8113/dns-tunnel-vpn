@@ -221,6 +221,13 @@ func (m *Manager) CurrentResolver() *resolver.Resolver {
 	return &resolver.Resolver{Address: m.resolverIP, Type: "udp"}
 }
 
+// LocalAddr returns the local SOCKS proxy address
+func (m *Manager) LocalAddr() string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.config.LocalAddr
+}
+
 // OnDisconnect returns a channel that receives when tunnel disconnects
 func (m *Manager) OnDisconnect() <-chan struct{} {
 	return m.disconnectCh
