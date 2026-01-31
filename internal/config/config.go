@@ -4,6 +4,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -157,11 +158,38 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("parsing config file: %w", err)
 	}
 
+	// Resolve relative paths
+	cfg.resolvePaths()
+
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("validating config: %w", err)
 	}
 
 	return cfg, nil
+}
+
+// resolvePaths converts relative paths to absolute paths based on executable location
+func (c *Config) resolvePaths() {
+	exePath, err := os.Executable()
+	if err != nil {
+		return
+	}
+	exeDir := filepath.Dir(exePath)
+
+	// Resolve dnstt_path if relative
+	if c.Tunnel.DnsttPath != "" && !filepath.IsAbs(c.Tunnel.DnsttPath) {
+		c.Tunnel.DnsttPath = filepath.Join(exeDir, c.Tunnel.DnsttPath)
+	}
+
+	// Resolve pubkey_file if relative
+	if c.Tunnel.PubKeyFile != "" && !filepath.IsAbs(c.Tunnel.PubKeyFile) {
+		c.Tunnel.PubKeyFile = filepath.Join(exeDir, c.Tunnel.PubKeyFile)
+	}
+
+	// Resolve log file if relative
+	if c.Log.File != "" && !filepath.IsAbs(c.Log.File) {
+		c.Log.File = filepath.Join(exeDir, c.Log.File)
+	}
 }
 
 // Validate checks the configuration for required fields and valid values.

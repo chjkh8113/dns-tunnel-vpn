@@ -1,7 +1,7 @@
 # dns-tunnel unified configuration
 
 tunnel:
-  dnstt_path: "C:\\Users\\Administrator\\dns-resolver-svc\\dnstt-client.exe"
+  dnstt_path: "./dnstt-client.exe"  # Relative to executable directory
   domain: "t.rmdashrf.com"
   pubkey: "7eb6bd9d446c54ee03640f21c827bbca41e93aaabd09c74d28c8990d4472bf4c"
   local_addr: "127.0.0.1:7000"
