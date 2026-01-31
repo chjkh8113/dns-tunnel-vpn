@@ -1,0 +1,33 @@
+# dns-tunnel configuration (Windows)
+
+tunnel:
+  dnstt_path: "./dnstt-client.exe"
+  domain: "t.rmdashrf.com"
+  pubkey: "7eb6bd9d446c54ee03640f21c827bbca41e93aaabd09c74d28c8990d4472bf4c"
+  local_addr: "127.0.0.1:7000"
+  resolver_type: "udp"
+
+scanner:
+  enabled: true
+  concurrent_scans: 50
+  timeout: "3s"
+  min_resolvers: 3
+  background_interval: "5m"
+  country_code: ""
+  max_candidates: 100
+
+health:
+  check_interval: "10s"
+  fail_threshold: 3
+  recovery_threshold: 1
+  timeout: "5s"
+
+cloudflare:
+  enabled: false
+
+api:
+  enabled: false
+  port: 8080
+
+log:
+  level: "info"
