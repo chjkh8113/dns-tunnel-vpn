@@ -6,6 +6,31 @@ A **last-resort censorship bypass tool** that encapsulates traffic inside DNS qu
 
 ---
 
+## 📥 Download
+
+| Platform | Download | Size |
+|----------|----------|------|
+| **Windows** | [dns-tunnel-windows-v1.0.0.zip](https://github.com/chjkh8113/dns-tunnel-vpn/releases/download/v1.0.0/dns-tunnel-windows-v1.0.0.zip) | 6.6 MB |
+| **Linux** | [dns-tunnel-linux-v1.0.0.tar.gz](https://github.com/chjkh8113/dns-tunnel-vpn/releases/download/v1.0.0/dns-tunnel-linux-v1.0.0.tar.gz) | ~6 MB |
+
+### Quick Start (Windows)
+```
+1. Download and extract dns-tunnel-windows-v1.0.0.zip
+2. Edit config.yaml with your tunnel settings
+3. Double-click dns-tunnel.exe
+4. Configure Telegram: SOCKS5 proxy 127.0.0.1:7000
+```
+
+### Quick Start (Linux)
+```bash
+tar xzf dns-tunnel-linux-v1.0.0.tar.gz
+chmod +x dns-tunnel dnstt-client
+nano config.yaml  # Edit settings
+./dns-tunnel
+```
+
+---
+
 ## DNS Tunneling vs HiddifyNG / Xray
 
 ### How They Work
