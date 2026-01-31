@@ -1,4 +1,4 @@
-// Package tunnel provides DNS tunnel connection management.
+// Package tunnel provides DNS tunnel connection management via dnstt-client.
 package tunnel
 
 import (
@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"os"
+	"os/exec"
+	"runtime"
 	"sync"
 	"time"
 
@@ -13,217 +16,243 @@ import (
 	"github.com/chjkh8113/dns-tunnel-vpn/internal/resolver"
 )
 
-// State represents the current state of the tunnel.
-type State int
-
-const (
-	// StateDisconnected indicates the tunnel is not connected.
-	StateDisconnected State = iota
-	// StateConnecting indicates the tunnel is being established.
-	StateConnecting
-	// StateConnected indicates the tunnel is active.
-	StateConnected
-	// StateReconnecting indicates the tunnel is reconnecting.
-	StateReconnecting
-)
-
-// Manager manages the DNS tunnel connection.
+// Manager manages the dnstt-client subprocess
 type Manager struct {
-	config   *config.TunnelConfig
-	pool     *resolver.Pool
-	state    State
-	stateMu  sync.RWMutex
-
-	// Connection details
-	currentResolver *resolver.Resolver
-	localListener   net.Listener
+	config     *config.TunnelConfig
+	pool       *resolver.Pool
+	cmd        *exec.Cmd
+	cancel     context.CancelFunc
+	mu         sync.RWMutex
+	resolverIP string
 
 	// Event channels
-	onDisconnect chan struct{}
-	onConnect    chan struct{}
-
-	// Shutdown
-	ctx    context.Context
-	cancel context.CancelFunc
+	disconnectCh chan struct{}
 }
 
-// New creates a new tunnel Manager.
+// New creates a new tunnel Manager
 func New(cfg *config.TunnelConfig, pool *resolver.Pool) *Manager {
-	ctx, cancel := context.WithCancel(context.Background())
 	return &Manager{
 		config:       cfg,
 		pool:         pool,
-		state:        StateDisconnected,
-		onDisconnect: make(chan struct{}, 1),
-		onConnect:    make(chan struct{}, 1),
-		ctx:          ctx,
-		cancel:       cancel,
+		disconnectCh: make(chan struct{}, 1),
 	}
 }
 
-// Connect establishes a connection using the provided resolver.
+// Connect establishes a tunnel connection using the provided resolver
 func (m *Manager) Connect(r *resolver.Resolver) error {
-	m.stateMu.Lock()
-	m.state = StateConnecting
-	m.stateMu.Unlock()
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
-	log.Printf("Connecting to tunnel via resolver: %s (%s)", r.Address, r.Type)
-
-	// Create local listener
-	ln, err := net.Listen("tcp", m.config.LocalAddr)
-	if err != nil {
-		m.stateMu.Lock()
-		m.state = StateDisconnected
-		m.stateMu.Unlock()
-		return fmt.Errorf("failed to create local listener: %w", err)
+	if m.cmd != nil && m.isProcessRunning() {
+		// Stop existing tunnel first
+		m.stopInternal()
 	}
 
-	m.localListener = ln
-	m.currentResolver = r
+	ctx, cancel := context.WithCancel(context.Background())
+	m.cancel = cancel
 
-	m.stateMu.Lock()
-	m.state = StateConnected
-	m.stateMu.Unlock()
+	// Build command arguments
+	args := m.buildArgs(r.Address)
 
-	// Notify connection established
-	select {
-	case m.onConnect <- struct{}{}:
-	default:
+	log.Printf("[tunnel] Starting: %s %v", m.config.DnsttPath, args)
+
+	m.cmd = exec.CommandContext(ctx, m.config.DnsttPath, args...)
+	m.cmd.Stdout = os.Stdout
+	m.cmd.Stderr = os.Stderr
+
+	// Set process group for proper cleanup
+	setProcAttr(m.cmd)
+
+	if err := m.cmd.Start(); err != nil {
+		m.cancel = nil
+		m.cmd = nil
+		return fmt.Errorf("failed to start dnstt-client: %w", err)
 	}
 
-	log.Printf("Tunnel connected via %s, listening on %s", r.Address, m.config.LocalAddr)
+	m.resolverIP = r.Address
+	log.Printf("[tunnel] Process started with PID: %d", m.cmd.Process.Pid)
+
+	// Start goroutine to wait for process completion
+	go func() {
+		err := m.cmd.Wait()
+		if err != nil {
+			log.Printf("[tunnel] Process exited with error: %v", err)
+		} else {
+			log.Printf("[tunnel] Process exited normally")
+		}
+		// Notify disconnect
+		select {
+		case m.disconnectCh <- struct{}{}:
+		default:
+		}
+	}()
+
+	// Wait for port to become available
+	localPort := 7000
+	if m.config.LocalAddr != "" {
+		fmt.Sscanf(m.config.LocalAddr, "127.0.0.1:%d", &localPort)
+	}
+
+	addr := fmt.Sprintf("127.0.0.1:%d", localPort)
+	log.Printf("[tunnel] Waiting for port %d to open...", localPort)
+
+	portOpen := false
+	for i := 0; i < 20; i++ { // 20 * 500ms = 10 seconds max
+		time.Sleep(500 * time.Millisecond)
+
+		if !m.isProcessRunning() {
+			return fmt.Errorf("dnstt-client exited unexpectedly")
+		}
+
+		conn, err := net.DialTimeout("tcp", addr, 1*time.Second)
+		if err == nil {
+			conn.Close()
+			portOpen = true
+			log.Printf("[tunnel] Port %d is now open (after %dms)", localPort, (i+1)*500)
+			break
+		}
+	}
+
+	if !portOpen {
+		log.Printf("[tunnel] WARNING: Port %d never opened, but process is running", localPort)
+	}
+
 	return nil
 }
 
-// Disconnect closes the current tunnel connection.
-func (m *Manager) Disconnect() error {
-	m.stateMu.Lock()
-	defer m.stateMu.Unlock()
+// buildArgs constructs the command line arguments for dnstt-client
+func (m *Manager) buildArgs(resolverAddr string) []string {
+	args := []string{}
 
-	if m.state == StateDisconnected {
+	// Add resolver (UDP mode)
+	if !hasPort(resolverAddr) {
+		resolverAddr = resolverAddr + ":53"
+	}
+	args = append(args, "-udp", resolverAddr)
+
+	// Add public key
+	args = append(args, "-pubkey", m.config.PubKey)
+
+	// Add domain
+	args = append(args, m.config.Domain)
+
+	// Add local listener
+	args = append(args, m.config.LocalAddr)
+
+	return args
+}
+
+// hasPort checks if address includes a port
+func hasPort(addr string) bool {
+	for i := len(addr) - 1; i >= 0; i-- {
+		if addr[i] == ':' {
+			return true
+		}
+		if addr[i] == '.' {
+			return false
+		}
+	}
+	return false
+}
+
+// Disconnect stops the tunnel
+func (m *Manager) Disconnect() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.stopInternal()
+}
+
+// stopInternal stops the process without locking
+func (m *Manager) stopInternal() error {
+	if m.cancel != nil {
+		m.cancel()
+		m.cancel = nil
+	}
+
+	if m.cmd == nil || m.cmd.Process == nil {
 		return nil
 	}
 
-	if m.localListener != nil {
-		m.localListener.Close()
-		m.localListener = nil
+	if err := terminateProcess(m.cmd); err != nil {
+		return fmt.Errorf("failed to terminate process: %w", err)
 	}
 
-	m.currentResolver = nil
-	m.state = StateDisconnected
+	done := make(chan error, 1)
+	go func() {
+		done <- m.cmd.Wait()
+	}()
 
-	// Notify disconnection
 	select {
-	case m.onDisconnect <- struct{}{}:
-	default:
+	case <-done:
+	case <-time.After(5 * time.Second):
+		_ = m.cmd.Process.Kill()
 	}
 
-	log.Printf("Tunnel disconnected")
+	m.cmd = nil
+	m.resolverIP = ""
 	return nil
 }
 
-// Reconnect attempts to reconnect using the next available resolver.
-func (m *Manager) Reconnect() error {
-	m.stateMu.Lock()
-	m.state = StateReconnecting
-	m.stateMu.Unlock()
-
-	// Close existing connection
-	if m.localListener != nil {
-		m.localListener.Close()
-	}
-
-	// Mark current resolver as blocked if it exists
-	if m.currentResolver != nil {
-		m.pool.MarkBlocked(m.currentResolver.Address)
-		log.Printf("Marked resolver %s as blocked", m.currentResolver.Address)
-	}
-
-	// Get next resolver
-	next := m.pool.Next()
-	if next == nil {
-		m.stateMu.Lock()
-		m.state = StateDisconnected
-		m.stateMu.Unlock()
-		return fmt.Errorf("no resolvers available")
-	}
-
-	// Connect with new resolver
-	return m.Connect(next)
-}
-
-// State returns the current tunnel state.
-func (m *Manager) State() State {
-	m.stateMu.RLock()
-	defer m.stateMu.RUnlock()
-	return m.state
-}
-
-// IsConnected returns true if the tunnel is connected.
+// IsConnected checks if the tunnel is running
 func (m *Manager) IsConnected() bool {
-	return m.State() == StateConnected
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.isProcessRunning()
 }
 
-// CurrentResolver returns the currently active resolver.
-func (m *Manager) CurrentResolver() *resolver.Resolver {
-	m.stateMu.RLock()
-	defer m.stateMu.RUnlock()
-	return m.currentResolver
-}
-
-// OnDisconnect returns a channel that receives when the tunnel disconnects.
-func (m *Manager) OnDisconnect() <-chan struct{} {
-	return m.onDisconnect
-}
-
-// OnConnect returns a channel that receives when the tunnel connects.
-func (m *Manager) OnConnect() <-chan struct{} {
-	return m.onConnect
-}
-
-// Run starts the tunnel manager and handles connections.
-func (m *Manager) Run(ctx context.Context) error {
-	for {
-		select {
-		case <-ctx.Done():
-			return m.Disconnect()
-		case <-m.onDisconnect:
-			log.Printf("Tunnel disconnected, attempting reconnect...")
-			time.Sleep(time.Second) // Brief delay before reconnect
-			if err := m.Reconnect(); err != nil {
-				log.Printf("Reconnect failed: %v", err)
-			}
-		}
+// isProcessRunning checks process status without locking
+func (m *Manager) isProcessRunning() bool {
+	if m.cmd == nil || m.cmd.Process == nil {
+		return false
 	}
+	if m.cmd.ProcessState != nil {
+		return false
+	}
+	return checkProcessAlive(m.cmd.Process.Pid)
 }
 
-// Shutdown gracefully shuts down the tunnel manager.
+// CurrentResolver returns the current resolver
+func (m *Manager) CurrentResolver() *resolver.Resolver {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if m.resolverIP == "" {
+		return nil
+	}
+	return &resolver.Resolver{Address: m.resolverIP, Type: "udp"}
+}
+
+// OnDisconnect returns a channel that receives when tunnel disconnects
+func (m *Manager) OnDisconnect() <-chan struct{} {
+	return m.disconnectCh
+}
+
+// Shutdown gracefully shuts down the tunnel
 func (m *Manager) Shutdown() error {
-	m.cancel()
 	return m.Disconnect()
 }
 
-// AcceptLoop accepts incoming connections on the local listener.
-// This should be called in a goroutine after Connect.
-func (m *Manager) AcceptLoop(handler func(net.Conn)) error {
-	if m.localListener == nil {
-		return fmt.Errorf("tunnel not connected")
+// terminateProcess attempts graceful termination
+func terminateProcess(cmd *exec.Cmd) error {
+	if cmd.Process == nil {
+		return nil
+	}
+	if runtime.GOOS == "windows" {
+		return cmd.Process.Kill()
+	}
+	return cmd.Process.Signal(os.Interrupt)
+}
+
+// checkProcessAlive checks if a process is running
+func checkProcessAlive(pid int) bool {
+	process, err := os.FindProcess(pid)
+	if err != nil {
+		return false
 	}
 
-	for {
-		conn, err := m.localListener.Accept()
-		if err != nil {
-			// Check if we're shutting down
-			m.stateMu.RLock()
-			state := m.state
-			m.stateMu.RUnlock()
-
-			if state == StateDisconnected {
-				return nil
-			}
-			return fmt.Errorf("accept failed: %w", err)
-		}
-
-		go handler(conn)
+	if runtime.GOOS == "windows" {
+		return checkWindowsProcess(pid)
 	}
+
+	err = process.Signal(nil)
+	return err == nil
 }

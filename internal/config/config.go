@@ -29,6 +29,9 @@ type Config struct {
 
 // TunnelConfig contains tunnel-specific settings.
 type TunnelConfig struct {
+	// DnsttPath is the path to dnstt-client executable
+	DnsttPath string `yaml:"dnstt_path"`
+
 	// Domain is the tunnel domain (e.g., t.example.com)
 	Domain string `yaml:"domain"`
 
