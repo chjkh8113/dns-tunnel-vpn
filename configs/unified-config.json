@@ -1,0 +1,26 @@
+{
+  "tunnel": {
+    "dnstt_path": "dnstt-client.exe",
+    "pubkey": "7eb6bd9d446c54ee03640f21c827bbca41e93aaabd09c74d28c8990d4472bf4c",
+    "domain": "t.rmdashrf.com",
+    "local_port": 7000
+  },
+  "scanner": {
+    "country": "ir",
+    "workers": 100,
+    "timeout_sec": 2,
+    "min_resolvers": 10
+  },
+  "health": {
+    "check_interval_sec": 20,
+    "fail_threshold": 2
+  },
+  "cloudflare": {
+    "api_token": "",
+    "zone_id": "",
+    "record_name": "dns.rmdashrf.com"
+  },
+  "fallback": {
+    "txt_record": "dns.rmdashrf.com"
+  }
+}
