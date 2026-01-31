@@ -131,8 +131,8 @@ func DefaultConfig() *Config {
 			MinResolvers:    3,
 		},
 		Health: HealthConfig{
-			CheckInterval:     5 * time.Second,
-			FailThreshold:     2,
+			CheckInterval:     10 * time.Second,
+			FailThreshold:     3,
 			RecoveryThreshold: 1,
 			Timeout:           5 * time.Second,
 		},

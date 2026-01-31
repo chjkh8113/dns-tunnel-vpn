@@ -129,69 +129,40 @@ func (m *Monitor) checkResolver(r *resolver.Resolver) error {
 	return nil
 }
 
-// testSOCKS5Connection tests if SOCKS5 proxy is working by connecting to a test endpoint.
+// testSOCKS5Connection tests if SOCKS5 proxy is accepting connections.
+// This is a LIGHTWEIGHT check - only tests handshake, not full connection.
+// DNS tunneling is slow; we don't want to mark "unhealthy" just because it's overloaded.
 func (m *Monitor) testSOCKS5Connection(proxyAddr string) error {
-	// Connect to the SOCKS5 proxy
-	conn, err := net.DialTimeout("tcp", proxyAddr, m.config.Timeout)
+	// Connect to the SOCKS5 proxy with short timeout
+	conn, err := net.DialTimeout("tcp", proxyAddr, 2*time.Second)
 	if err != nil {
-		return fmt.Errorf("failed to connect to proxy: %w", err)
+		return fmt.Errorf("proxy unreachable: %w", err)
 	}
 	defer conn.Close()
 
-	// Set deadline for the entire handshake
-	deadline := time.Now().Add(m.config.Timeout)
-	conn.SetDeadline(deadline)
+	// Short deadline for handshake only
+	conn.SetDeadline(time.Now().Add(3 * time.Second))
 
 	// SOCKS5 handshake - no auth
-	// Send: version(1) + nmethods(1) + methods(1)
 	_, err = conn.Write([]byte{0x05, 0x01, 0x00})
 	if err != nil {
-		return fmt.Errorf("failed to send SOCKS5 greeting: %w", err)
+		return fmt.Errorf("handshake write failed: %w", err)
 	}
 
 	// Read response: version(1) + method(1)
 	resp := make([]byte, 2)
 	_, err = io.ReadFull(conn, resp)
 	if err != nil {
-		return fmt.Errorf("failed to read SOCKS5 response: %w", err)
+		return fmt.Errorf("handshake read failed: %w", err)
 	}
 
 	if resp[0] != 0x05 {
 		return fmt.Errorf("invalid SOCKS5 version: %d", resp[0])
 	}
 
-	if resp[1] == 0xFF {
-		return fmt.Errorf("SOCKS5 no acceptable auth method")
-	}
-
-	// SOCKS5 connect request to a known endpoint (Google DNS)
-	// cmd=CONNECT(0x01), rsv=0, atyp=IPv4(0x01), addr=8.8.8.8, port=53
-	connectReq := []byte{
-		0x05, 0x01, 0x00, 0x01, // version, cmd=connect, rsv, atyp=ipv4
-		8, 8, 8, 8, // 8.8.8.8
-		0x00, 0x35, // port 53
-	}
-	_, err = conn.Write(connectReq)
-	if err != nil {
-		return fmt.Errorf("failed to send SOCKS5 connect: %w", err)
-	}
-
-	// Read connect response
-	respBuf := make([]byte, 10) // minimum for IPv4 response
-	_, err = io.ReadFull(conn, respBuf)
-	if err != nil {
-		return fmt.Errorf("failed to read SOCKS5 connect response: %w", err)
-	}
-
-	if respBuf[0] != 0x05 {
-		return fmt.Errorf("invalid SOCKS5 version in response: %d", respBuf[0])
-	}
-
-	if respBuf[1] != 0x00 {
-		return fmt.Errorf("SOCKS5 connect failed with code: %d", respBuf[1])
-	}
-
-	// Connection through proxy successful!
+	// Handshake successful - proxy is alive
+	// Don't test full CONNECT as it goes through slow DNS tunnel
+	log.Printf("[health] SOCKS5 handshake OK (proxy accepting connections)")
 	return nil
 }
 
@@ -201,19 +172,23 @@ func (m *Monitor) handleFailure(reason string) {
 	defer m.statusMu.Unlock()
 
 	m.failCount++
-	log.Printf("Health check failed (%d/%d): %s", m.failCount, m.config.FailThreshold, reason)
+	log.Printf("[health] Check failed (%d/%d): %s", m.failCount, m.config.FailThreshold, reason)
 
 	if m.failCount >= m.config.FailThreshold {
 		if m.status != StatusUnhealthy {
 			m.status = StatusUnhealthy
-			log.Printf("Connection marked as unhealthy")
+			log.Printf("[health] Connection marked as UNHEALTHY - triggering reconnect")
 			select {
 			case m.onUnhealthy <- struct{}{}:
 			default:
+				log.Printf("[health] WARNING: unhealthy channel full, reconnect already pending")
 			}
+		} else {
+			log.Printf("[health] Already unhealthy, waiting for reconnect to complete")
 		}
 	} else if m.failCount > 0 && m.status == StatusHealthy {
 		m.status = StatusDegraded
+		log.Printf("[health] Connection degraded (%d failures)", m.failCount)
 	}
 }
 
@@ -227,15 +202,26 @@ func (m *Monitor) handleSuccess(latency time.Duration) {
 		if m.failCount <= -m.config.RecoveryThreshold {
 			m.status = StatusHealthy
 			m.failCount = 0
-			log.Printf("Connection recovered (latency: %v)", latency)
+			log.Printf("[health] Connection RECOVERED (latency: %v)", latency)
 			select {
 			case m.onHealthy <- struct{}{}:
 			default:
 			}
+		} else {
+			log.Printf("[health] Recovery in progress (need %d more successes)", -m.failCount+m.config.RecoveryThreshold)
 		}
 	} else {
 		m.failCount = 0
 	}
+}
+
+// Reset resets the health monitor state after reconnection.
+func (m *Monitor) Reset() {
+	m.statusMu.Lock()
+	defer m.statusMu.Unlock()
+	m.failCount = 0
+	m.status = StatusHealthy
+	log.Printf("[health] Monitor reset - status healthy")
 }
 
 // Status returns the current health status.

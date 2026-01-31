@@ -173,7 +173,12 @@ func (a *App) handleDisconnect() {
 		log.Printf("Reconnection failed: %v", err)
 		// Try again with next resolver
 		a.handleDisconnect()
+		return
 	}
+
+	// Step 5: Reset health monitor after successful reconnection
+	a.healthMon.Reset()
+	log.Printf("Successfully reconnected to %s", next.Address)
 }
 
 // waitForShutdown blocks until a shutdown signal is received.

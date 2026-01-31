@@ -18,8 +18,8 @@ scanner:
     - "builtin"  # Use built-in public DNS resolvers
 
 health:
-  check_interval: "5s"      # Check every 5 seconds for fast detection
-  fail_threshold: 2         # 2 failures = unhealthy (10s max)
+  check_interval: "10s"     # Check every 10 seconds (proxy handshake only)
+  fail_threshold: 3         # 3 failures = unhealthy (30s of actual failure)
   recovery_threshold: 1     # 1 success = healthy again
   timeout: "5s"             # 5s timeout per health check
 
