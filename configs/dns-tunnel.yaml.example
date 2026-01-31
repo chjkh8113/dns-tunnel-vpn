@@ -1,0 +1,82 @@
+# dns-tunnel configuration example
+# Copy this file to dns-tunnel.yaml and customize as needed
+
+# Tunnel configuration
+tunnel:
+  # The DNS tunnel domain (required)
+  domain: "t.example.com"
+
+  # Server public key - either pubkey or pubkey_file is required
+  # Get this from: dnstt-server -gen-key -pubkey-file server.pub
+  pubkey: ""
+  pubkey_file: "/path/to/server.pub"
+
+  # Local address to listen on (default: 127.0.0.1:7000)
+  local_addr: "127.0.0.1:7000"
+
+  # Resolver type: "udp", "doh", or "dot"
+  resolver_type: "udp"
+
+  # uTLS fingerprint distribution for DoH/DoT
+  # Available: Firefox_120, Chrome_120, iOS_14, random, none
+  utls_fingerprint: "4*random,3*Firefox_120,1*Firefox_105,3*Chrome_120"
+
+  # Idle connection timeout
+  idle_timeout: "2m"
+
+# Scanner configuration
+scanner:
+  # Enable automatic resolver scanning
+  enabled: true
+
+  # Number of concurrent resolver scans
+  concurrent_scans: 10
+
+  # Timeout for each resolver scan
+  timeout: "5s"
+
+  # Minimum number of working resolvers to maintain
+  min_resolvers: 3
+
+  # Sources to fetch resolver lists from
+  resolver_sources:
+    - "https://public-dns.info/nameserver/ir.txt"
+
+# Health monitoring configuration
+health:
+  # Interval between health checks
+  check_interval: "30s"
+
+  # Number of consecutive failures before marking unhealthy
+  fail_threshold: 3
+
+  # Number of successes needed to recover
+  recovery_threshold: 2
+
+  # Timeout for each health check
+  timeout: "10s"
+
+# Cloudflare DNS integration (optional)
+cloudflare:
+  # Enable Cloudflare integration
+  enabled: false
+
+  # Cloudflare API token with DNS edit permissions
+  api_token: ""
+
+  # Zone ID for your domain
+  zone_id: ""
+
+  # TXT record name to store resolver list
+  txt_record: "resolvers.example.com"
+
+# Logging configuration
+log:
+  # Log level: debug, info, warn, error
+  level: "info"
+
+  # Log format: text, json
+  format: "text"
+
+  # Optional log file path (logs to stdout if not set)
+  file: ""
