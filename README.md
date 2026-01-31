@@ -10,9 +10,9 @@ A **last-resort censorship bypass tool** that encapsulates traffic inside DNS qu
 
 | Platform | Download | Size |
 |----------|----------|------|
-| **Windows** | [dns-tunnel-windows-v1.0.0.zip](https://github.com/chjkh8113/dns-tunnel-vpn/releases/download/v1.0.0/dns-tunnel-windows-v1.0.0.zip) | 6.6 MB |
-| **Linux** | [dns-tunnel-linux-v1.0.0.tar.gz](https://github.com/chjkh8113/dns-tunnel-vpn/releases/download/v1.0.0/dns-tunnel-linux-v1.0.0.tar.gz) | 6.6 MB |
-| **macOS (M1/M2/M3)** | [dns-tunnel-macos-arm64-v1.0.0.tar.gz](https://github.com/chjkh8113/dns-tunnel-vpn/releases/download/v1.0.0/dns-tunnel-macos-arm64-v1.0.0.tar.gz) | 5.9 MB |
+| **Windows** | [dns-tunnel-windows-v1.0.1.zip](https://github.com/chjkh8113/dns-tunnel-vpn/releases/download/v1.0.1/dns-tunnel-windows-v1.0.1.zip) | 6.6 MB |
+| **Linux** | [dns-tunnel-linux-v1.0.1.tar.gz](https://github.com/chjkh8113/dns-tunnel-vpn/releases/download/v1.0.1/dns-tunnel-linux-v1.0.1.tar.gz) | 6.6 MB |
+| **macOS (M1/M2/M3)** | [dns-tunnel-macos-arm64-v1.0.1.tar.gz](https://github.com/chjkh8113/dns-tunnel-vpn/releases/download/v1.0.1/dns-tunnel-macos-arm64-v1.0.1.tar.gz) | 5.9 MB |
 
 ### Quick Start (Windows)
 ```
