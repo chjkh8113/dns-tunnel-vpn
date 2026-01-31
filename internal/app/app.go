@@ -9,7 +9,9 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
+	"time"
 
+	"github.com/chjkh8113/dns-tunnel-vpn/internal/api"
 	"github.com/chjkh8113/dns-tunnel-vpn/internal/cloudflare"
 	"github.com/chjkh8113/dns-tunnel-vpn/internal/config"
 	"github.com/chjkh8113/dns-tunnel-vpn/internal/health"
@@ -26,6 +28,7 @@ type App struct {
 	healthMon    *health.Monitor
 	resolverPool *resolver.Pool
 	cfClient     *cloudflare.Client
+	apiServer    *api.Server
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -44,6 +47,7 @@ func New(cfg *config.Config) *App {
 	tunnelMgr := tunnel.New(&cfg.Tunnel, pool)
 	healthMon := health.New(&cfg.Health, tunnelMgr, pool)
 	cfClient := cloudflare.New(&cfg.Cloudflare)
+	apiServer := api.New(pool, healthMon)
 
 	return &App{
 		config:       cfg,
@@ -52,6 +56,7 @@ func New(cfg *config.Config) *App {
 		healthMon:    healthMon,
 		resolverPool: pool,
 		cfClient:     cfClient,
+		apiServer:    apiServer,
 		ctx:          ctx,
 		cancel:       cancel,
 	}
@@ -63,7 +68,18 @@ func (a *App) Run() error {
 	log.Printf("Domain: %s", a.config.Tunnel.Domain)
 	log.Printf("Local address: %s", a.config.Tunnel.LocalAddr)
 
-	// Step 1: Try to fetch resolvers from TXT record (fallback source)
+	// Step 1: Start API server if enabled
+	if a.config.API.Enabled {
+		a.wg.Add(1)
+		go func() {
+			defer a.wg.Done()
+			if err := a.apiServer.Start(a.config.API.Port); err != nil {
+				log.Printf("API server stopped: %v", err)
+			}
+		}()
+	}
+
+	// Step 2: Try to fetch resolvers from TXT record (fallback source)
 	if a.cfClient.IsEnabled() {
 		log.Printf("Attempting to fetch resolvers from Cloudflare TXT record...")
 		resolvers, err := a.cfClient.FetchResolvers(a.ctx)
@@ -77,7 +93,7 @@ func (a *App) Run() error {
 		}
 	}
 
-	// Step 2: If pool is empty or has few resolvers, run initial scan
+	// Step 3: If pool is empty or has few resolvers, run initial scan
 	if a.config.Scanner.Enabled && a.resolverPool.Count() < a.config.Scanner.MinResolvers {
 		log.Printf("Running initial resolver scan...")
 		working, err := a.scanner.ScanFromSources(a.ctx)
@@ -88,7 +104,7 @@ func (a *App) Run() error {
 		}
 	}
 
-	// Step 3: Connect to first available resolver
+	// Step 4: Connect to first available resolver
 	currentResolver := a.resolverPool.Get()
 	if currentResolver == nil {
 		return fmt.Errorf("no resolvers available, cannot start tunnel")
@@ -98,7 +114,7 @@ func (a *App) Run() error {
 		return fmt.Errorf("failed to connect tunnel: %w", err)
 	}
 
-	// Step 4: Start health monitor in goroutine
+	// Step 5: Start health monitor in goroutine
 	a.wg.Add(1)
 	go func() {
 		defer a.wg.Done()
@@ -107,14 +123,32 @@ func (a *App) Run() error {
 		}
 	}()
 
-	// Step 5: Start disconnect handler
+	// Step 6: Start background scanner if interval configured
+	if a.config.Scanner.Enabled && a.config.Scanner.BackgroundInterval > 0 {
+		a.wg.Add(1)
+		go func() {
+			defer a.wg.Done()
+			a.scanner.StartBackground(a.ctx, a.config.Scanner.BackgroundInterval)
+		}()
+	}
+
+	// Step 7: Start periodic Cloudflare TXT refresh
+	if a.cfClient.IsEnabled() {
+		a.wg.Add(1)
+		go func() {
+			defer a.wg.Done()
+			a.periodicTXTRefresh()
+		}()
+	}
+
+	// Step 8: Start disconnect handler
 	a.wg.Add(1)
 	go func() {
 		defer a.wg.Done()
 		a.handleDisconnects()
 	}()
 
-	// Step 6: Block until shutdown signal
+	// Step 9: Block until shutdown signal
 	return a.waitForShutdown()
 }
 
@@ -196,6 +230,30 @@ func (a *App) waitForShutdown() error {
 	return a.Shutdown()
 }
 
+// periodicTXTRefresh periodically fetches resolvers from Cloudflare TXT record.
+func (a *App) periodicTXTRefresh() {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-a.ctx.Done():
+			return
+		case <-ticker.C:
+			log.Printf("Refreshing resolvers from Cloudflare TXT record...")
+			resolvers, err := a.cfClient.FetchResolvers(a.ctx)
+			if err != nil {
+				log.Printf("TXT refresh failed: %v", err)
+				continue
+			}
+			for _, r := range resolvers {
+				a.resolverPool.Add(r, a.config.Tunnel.ResolverType)
+			}
+			log.Printf("TXT refresh: added %d resolvers", len(resolvers))
+		}
+	}
+}
+
 // Shutdown gracefully shuts down all components.
 func (a *App) Shutdown() error {
 	log.Printf("Shutting down dns-tunnel...")
@@ -205,6 +263,15 @@ func (a *App) Shutdown() error {
 
 	// Stop health monitor
 	a.healthMon.Stop()
+
+	// Stop API server
+	if a.config.API.Enabled {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := a.apiServer.Stop(ctx); err != nil {
+			log.Printf("Error stopping API server: %v", err)
+		}
+	}
 
 	// Disconnect tunnel
 	if err := a.tunnelMgr.Shutdown(); err != nil {

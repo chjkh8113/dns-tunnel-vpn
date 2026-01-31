@@ -16,6 +16,9 @@ scanner:
   min_resolvers: 10
   resolver_sources:
     - "builtin"  # Use built-in public DNS resolvers
+  background_interval: "5m"    # Scan every 5 minutes in background
+  country_code: ""             # ISO country code for IP ranges (e.g., "ir" for Iran)
+  max_candidates: 1000         # Max IPs to scan from country ranges
 
 health:
   check_interval: "10s"     # Check every 10 seconds (proxy handshake only)
@@ -28,6 +31,10 @@ cloudflare:
   api_token: ""
   zone_id: ""
   txt_record: "dns.rmdashrf.com"
+
+api:
+  enabled: false            # Enable REST API server
+  port: 8080                # API server port
 
 log:
   level: "info"
