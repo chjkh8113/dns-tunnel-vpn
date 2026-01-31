@@ -142,9 +142,14 @@ func (s *Scanner) ScanFromSources(ctx context.Context) (int, error) {
 		}
 	}
 
-	// Limit candidates to MaxCandidates
-	if s.config.MaxCandidates > 0 && len(candidates) > s.config.MaxCandidates {
-		candidates = candidates[:s.config.MaxCandidates]
+	// Limit candidates to MaxCandidates (default 100 if not set)
+	maxCandidates := s.config.MaxCandidates
+	if maxCandidates <= 0 {
+		maxCandidates = 100 // Safe default - never scan unlimited IPs
+	}
+	if len(candidates) > maxCandidates {
+		log.Printf("Limiting scan from %d to %d candidates", len(candidates), maxCandidates)
+		candidates = candidates[:maxCandidates]
 	}
 
 	log.Printf("Scanning %d resolver candidates", len(candidates))

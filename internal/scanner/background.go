@@ -88,8 +88,12 @@ func (s *Scanner) parseCIDRList(r io.Reader) ([]string, error) {
 			candidates = append(candidates, ip+":53")
 		}
 
-		// Early exit if we have enough candidates
-		if s.config.MaxCandidates > 0 && len(candidates) >= s.config.MaxCandidates {
+		// Early exit if we have enough candidates (default 100 if not set)
+		maxCandidates := s.config.MaxCandidates
+		if maxCandidates <= 0 {
+			maxCandidates = 100
+		}
+		if len(candidates) >= maxCandidates {
 			break
 		}
 	}
