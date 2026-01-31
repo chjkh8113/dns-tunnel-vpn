@@ -24,8 +24,20 @@ type Config struct {
 	// Cloudflare DNS configuration
 	Cloudflare CloudflareConfig `yaml:"cloudflare"`
 
+	// API server configuration
+	API APIConfig `yaml:"api"`
+
 	// Logging configuration
 	Log LogConfig `yaml:"log"`
+}
+
+// APIConfig contains REST API server settings.
+type APIConfig struct {
+	// Enabled determines if the API server should start
+	Enabled bool `yaml:"enabled"`
+
+	// Port is the port the API server listens on
+	Port int `yaml:"port"`
 }
 
 // TunnelConfig contains tunnel-specific settings.
@@ -71,6 +83,15 @@ type ScannerConfig struct {
 
 	// ResolverSources is a list of sources to fetch resolver lists from
 	ResolverSources []string `yaml:"resolver_sources"`
+
+	// BackgroundInterval is the interval between background scans
+	BackgroundInterval time.Duration `yaml:"background_interval"`
+
+	// CountryCode is the ISO country code for IP range fetching (e.g., "ir")
+	CountryCode string `yaml:"country_code"`
+
+	// MaxCandidates limits the number of IPs to scan from country ranges
+	MaxCandidates int `yaml:"max_candidates"`
 }
 
 // HealthConfig contains health monitoring settings.
@@ -125,10 +146,13 @@ func DefaultConfig() *Config {
 			IdleTimeout:     2 * time.Minute,
 		},
 		Scanner: ScannerConfig{
-			Enabled:         true,
-			ConcurrentScans: 10,
-			Timeout:         5 * time.Second,
-			MinResolvers:    3,
+			Enabled:            true,
+			ConcurrentScans:    10,
+			Timeout:            5 * time.Second,
+			MinResolvers:       3,
+			BackgroundInterval: 5 * time.Minute,
+			CountryCode:        "",
+			MaxCandidates:      1000,
 		},
 		Health: HealthConfig{
 			CheckInterval:     10 * time.Second,
@@ -138,6 +162,10 @@ func DefaultConfig() *Config {
 		},
 		Cloudflare: CloudflareConfig{
 			Enabled: false,
+		},
+		API: APIConfig{
+			Enabled: false,
+			Port:    8080,
 		},
 		Log: LogConfig{
 			Level:  "info",
