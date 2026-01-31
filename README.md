@@ -1,8 +1,131 @@
 # DNS Tunnel VPN
 
-A complete guide to setting up a **full VPN tunnel over DNS** using dnstt + WireGuard + wstunnel. This allows you to bypass network restrictions by encapsulating VPN traffic inside DNS queries.
+A **last-resort censorship bypass tool** that encapsulates traffic inside DNS queries. Use this when everything else (VPN, Xray, HiddifyNG) is blocked.
 
-## How It Works
+> **Important**: DNS tunneling is SLOW (~50-200 KB/s). For normal use, prefer [HiddifyNG/Xray](#dns-tunneling-vs-hiddifyng-xray). DNS tunnel is your fallback when CDN IPs are blocked.
+
+---
+
+## DNS Tunneling vs HiddifyNG / Xray
+
+### How They Work
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                        DNS TUNNELING (this project)                     │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  ┌──────────┐    DNS Query     ┌──────────┐    DNS Query    ┌────────┐ │
+│  │  Client  │ ───────────────► │ Resolver │ ──────────────► │ Server │ │
+│  │          │ ◄─────────────── │ (Google) │ ◄────────────── │        │ │
+│  └──────────┘    DNS Response  └──────────┘    DNS Response └────────┘ │
+│                                                                         │
+│  • Data encoded in DNS queries/responses (base32/base64)                │
+│  • Port 53 (DNS) - cannot be blocked without breaking internet          │
+│  • Max bandwidth: ~50-200 KB/s                                          │
+│  • Effective MTU: 133-1232 bytes per packet                             │
+│  • Almost impossible to block completely                                │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    HiddifyNG / Xray / V2Ray                             │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  ┌──────────┐     HTTPS (TLS)      ┌─────────┐     HTTPS      ┌──────┐ │
+│  │  Client  │ ──────────────────►  │   CDN   │ ─────────────► │Server│ │
+│  │          │ ◄──────────────────  │(CF/GCore)◄───────────────│      │ │
+│  └──────────┘  (looks like normal) └─────────┘                └──────┘ │
+│                                                                         │
+│  • Real TCP/TLS connection (full speed)                                 │
+│  • Port 443 (looks like normal HTTPS browsing)                          │
+│  • Full bandwidth: 10-100+ Mbps                                         │
+│  • Uses CDN (Cloudflare/GCore) to hide server IP                        │
+│  • Can be blocked by blocking CDN IPs                                   │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### Protocol Comparison
+
+| Feature | DNS Tunnel | HiddifyNG/Xray |
+|---------|-----------|----------------|
+| **Speed** | ~50-200 KB/s | 10-100+ Mbps |
+| **Port** | 53 (DNS) | 443 (HTTPS) |
+| **Looks like** | DNS queries | Normal browsing |
+| **Can be blocked?** | Almost impossible | Yes (block CDN IPs) |
+| **Use case** | Last resort | Daily use |
+| **YouTube/Video** | ❌ No | ✅ Yes |
+| **Telegram** | ✅ Yes | ✅ Yes |
+| **SSH** | ✅ Yes | ✅ Yes |
+
+### HiddifyNG Protocols
+
+| Protocol | Description | Detection Risk |
+|----------|-------------|----------------|
+| **Reality** | Impersonates real websites (google.com) | Very Low |
+| **VLESS** | Lightweight, looks like HTTPS | Low |
+| **Trojan** | Mimics normal HTTPS traffic | Low |
+| **VMess** | Original V2Ray (older) | Medium |
+
+### When to Use What
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         DECISION FLOWCHART                              │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  Is Cloudflare/CDN working?                                             │
+│         │                                                               │
+│         ├── YES ──► Use HiddifyNG/Xray (VLESS, Reality, Trojan)        │
+│         │           Full speed, YouTube works                           │
+│         │                                                               │
+│         └── NO ───► Are public DNS resolvers working?                   │
+│                            │                                            │
+│                            ├── YES ──► Use DNS Tunnel (this project)   │
+│                            │           Slow but works for Telegram/SSH  │
+│                            │                                            │
+│                            └── NO ───► Internet is completely down      │
+│                                        Wait or use satellite/mesh       │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### Bandwidth Limitations
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    DNS TUNNEL BANDWIDTH REALITY                         │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  Maximum throughput:    ~50-200 KB/s (varies by resolver)               │
+│  Effective MTU:         133-1232 bytes per packet                       │
+│  Latency:               High (DNS round-trip)                           │
+│                                                                         │
+├─────────────────────────────────────────────────────────────────────────┤
+│  ✅ WORKS WELL:                                                         │
+│     • Telegram, WhatsApp, Signal (text messages, small images)          │
+│     • SSH sessions (terminal, remote admin)                             │
+│     • Email (IMAP, SMTP)                                                │
+│     • Light web browsing (text-heavy pages, no videos)                  │
+│     • API calls, small data transfers                                   │
+│                                                                         │
+├─────────────────────────────────────────────────────────────────────────┤
+│  ❌ WON'T WORK:                                                         │
+│     • YouTube, Netflix, video streaming (needs 500+ KB/s)               │
+│     • Video calls (Zoom, Google Meet)                                   │
+│     • Large file downloads                                              │
+│     • Online gaming                                                     │
+│     • Social media with lots of images/videos                           │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Architecture Overview
+
+### Full VPN Mode (WireGuard + dnstt)
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -15,10 +138,69 @@ A complete guide to setting up a **full VPN tunnel over DNS** using dnstt + Wire
                                       │ DNS Queries (encrypted)
                                       ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                                   SERVER (VPS)                               │
+│                           SERVER (Germany VPS)                               │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │  [dnstt-server] → [wstunnel] → [WireGuard] → [Internet]                    │
 │      UDP:53         TCP:5555     UDP:51820                                  │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### SOCKS Proxy Mode (dns-tunnel.exe)
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              CLIENT (Iran VPS)                               │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  [dns-tunnel.exe]                                                           │
+│       │                                                                      │
+│       ├── Scanner: Find working DNS resolvers                               │
+│       ├── Tunnel: Spawn dnstt-client subprocess                             │
+│       ├── Health: Monitor connection, auto-reconnect                        │
+│       └── Pool: Rotate through resolvers on failure                         │
+│                                                                              │
+│  [dnstt-client] ──► [DNS Resolver] ──► [dnstt-server on Germany VPS]       │
+│       │                                        │                             │
+│       └── SOCKS5 Proxy (127.0.0.1:7000)        └── Internet Access          │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Geographic Requirements
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          WHY TWO LOCATIONS?                                  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│   ┌─────────────┐         DNS Queries          ┌─────────────────┐         │
+│   │  IRAN VPS   │ ───────────────────────────► │   GERMANY VPS   │         │
+│   │             │                               │                 │         │
+│   │ • Scanner   │         DNS Responses         │ • dnstt-server  │         │
+│   │ • Tunnel    │ ◄─────────────────────────── │ • SOCKS proxy   │         │
+│   │ • Client    │                               │ • Internet      │         │
+│   └─────────────┘                               └─────────────────┘         │
+│         │                                               │                    │
+│         │ Users connect here                            │ Free internet      │
+│         │ (Iran local IP reachable)                     │ (no censorship)    │
+│         ▼                                               ▼                    │
+│   ┌─────────────┐                               ┌─────────────────┐         │
+│   │  Users in   │                               │    YouTube      │         │
+│   │    Iran     │                               │    Google       │         │
+│   │             │                               │    etc...       │         │
+│   └─────────────┘                               └─────────────────┘         │
+│                                                                              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  WHY IRAN VPS?                                                               │
+│  • Must scan FROM Iran to find resolvers that work IN Iran                  │
+│  • Users need a reachable IP (Iran local IP during heavy censorship)        │
+│  • Can't scan from outside - different resolvers work in different regions  │
+│                                                                              │
+│  WHY GERMANY VPS?                                                            │
+│  • Outside the firewall - unrestricted internet access                      │
+│  • Hosts dnstt-server (authoritative DNS for tunnel domain)                 │
+│  • Provides actual internet connectivity                                    │
+│                                                                              │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -28,6 +210,44 @@ A complete guide to setting up a **full VPN tunnel over DNS** using dnstt + Wire
 - **DNS Covert Channel**: Traffic looks like normal DNS queries
 - **DoH Support**: Uses DNS-over-HTTPS for additional encryption
 - **Bypasses Firewalls**: Works even when only DNS is allowed
+- **Auto-Reconnect**: Detects failures and switches to next resolver
+- **Health Monitoring**: Active SOCKS5 health checks
+- **Resolver Pool**: Rotates through working resolvers on failure
+
+## Quick Start (dns-tunnel.exe)
+
+The unified `dns-tunnel.exe` handles everything automatically:
+
+```bash
+# Just run it - auto-finds config in configs/dns-tunnel.yaml
+./dns-tunnel.exe
+```
+
+**What it does:**
+1. Scans for working DNS resolvers
+2. Spawns dnstt-client with best resolver
+3. Monitors health every 10 seconds
+4. Auto-reconnects on failure
+5. Rotates through resolver pool
+
+**Config file** (`configs/dns-tunnel.yaml`):
+```yaml
+tunnel:
+  dnstt_path: "./dnstt-client.exe"
+  domain: "t.example.com"
+  pubkey: "your-server-public-key"
+  local_addr: "127.0.0.1:7000"
+
+scanner:
+  enabled: true
+  concurrent_scans: 100
+  timeout: "2s"
+  min_resolvers: 10
+
+health:
+  check_interval: "10s"
+  fail_threshold: 3
+```
 
 ## Components
 
@@ -317,9 +537,11 @@ journalctl -u wg-quick@wg0 -f
 ```
 
 ### Slow speeds
-- DNS tunnels are inherently slow (~50-200 KB/s)
-- Try different DoH resolvers
-- Reduce MTU in WireGuard config
+- **This is expected!** DNS tunnels are inherently slow (~50-200 KB/s max)
+- DNS tunneling encodes data in DNS queries (very limited payload)
+- Effective MTU is only 133-1232 bytes per packet
+- For high-speed needs, use HiddifyNG/Xray instead (see comparison above)
+- DNS tunnel is for Telegram/SSH/text - NOT for YouTube/video
 
 ### Connection drops
 - Add `PersistentKeepalive = 25` to WireGuard config
