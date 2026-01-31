@@ -194,11 +194,7 @@ func (s *Scanner) testDoTResolver(ctx context.Context, address string) error {
 
 // ScanFromSources fetches resolver lists from configured sources and scans them.
 func (s *Scanner) ScanFromSources(ctx context.Context) (int, error) {
-	if len(s.config.ResolverSources) == 0 {
-		return 0, fmt.Errorf("no resolver sources configured")
-	}
-
-	// Default UDP resolvers to test
+	// Default UDP resolvers to test (public DNS)
 	defaultResolvers := []string{
 		"8.8.8.8:53",
 		"8.8.4.4:53",
@@ -207,6 +203,11 @@ func (s *Scanner) ScanFromSources(ctx context.Context) (int, error) {
 		"9.9.9.9:53",
 		"208.67.222.222:53",
 		"208.67.220.220:53",
+	}
+
+	// If resolver sources configured, check for "builtin" or use defaults
+	if len(s.config.ResolverSources) == 0 {
+		log.Printf("No resolver sources configured, using built-in public DNS")
 	}
 
 	results := s.Scan(ctx, defaultResolvers, "udp")

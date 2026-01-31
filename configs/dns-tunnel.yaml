@@ -1,0 +1,33 @@
+# dns-tunnel unified configuration
+
+tunnel:
+  domain: "t.rmdashrf.com"
+  pubkey: "7eb6bd9d446c54ee03640f21c827bbca41e93aaabd09c74d28c8990d4472bf4c"
+  local_addr: "127.0.0.1:7000"
+  resolver_type: "udp"
+  utls_fingerprint: "4*random,3*Firefox_120,1*Firefox_105,3*Chrome_120"
+  idle_timeout: "2m"
+
+scanner:
+  enabled: true
+  concurrent_scans: 100
+  timeout: "2s"
+  min_resolvers: 10
+  resolver_sources:
+    - "builtin"  # Use built-in public DNS resolvers
+
+health:
+  check_interval: "20s"
+  fail_threshold: 2
+  recovery_threshold: 1
+  timeout: "10s"
+
+cloudflare:
+  enabled: false
+  api_token: ""
+  zone_id: ""
+  txt_record: "dns.rmdashrf.com"
+
+log:
+  level: "info"
+  format: "text"

@@ -1,6 +1,6 @@
 {
   "tunnel": {
-    "dnstt_path": "dnstt-client.exe",
+    "dnstt_path": "C:\\Users\\Administrator\\dns-resolver-svc\\dnstt-client.exe",
     "pubkey": "7eb6bd9d446c54ee03640f21c827bbca41e93aaabd09c74d28c8990d4472bf4c",
     "domain": "t.rmdashrf.com",
     "local_port": 7000
