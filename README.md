@@ -11,7 +11,8 @@ A **last-resort censorship bypass tool** that encapsulates traffic inside DNS qu
 | Platform | Download | Size |
 |----------|----------|------|
 | **Windows** | [dns-tunnel-windows-v1.0.0.zip](https://github.com/chjkh8113/dns-tunnel-vpn/releases/download/v1.0.0/dns-tunnel-windows-v1.0.0.zip) | 6.6 MB |
-| **Linux** | [dns-tunnel-linux-v1.0.0.tar.gz](https://github.com/chjkh8113/dns-tunnel-vpn/releases/download/v1.0.0/dns-tunnel-linux-v1.0.0.tar.gz) | ~6 MB |
+| **Linux** | [dns-tunnel-linux-v1.0.0.tar.gz](https://github.com/chjkh8113/dns-tunnel-vpn/releases/download/v1.0.0/dns-tunnel-linux-v1.0.0.tar.gz) | 6.6 MB |
+| **macOS (M1/M2/M3)** | [dns-tunnel-macos-arm64-v1.0.0.tar.gz](https://github.com/chjkh8113/dns-tunnel-vpn/releases/download/v1.0.0/dns-tunnel-macos-arm64-v1.0.0.tar.gz) | 5.9 MB |
 
 ### Quick Start (Windows)
 ```
@@ -25,6 +26,15 @@ A **last-resort censorship bypass tool** that encapsulates traffic inside DNS qu
 ```bash
 tar xzf dns-tunnel-linux-v1.0.0.tar.gz
 chmod +x dns-tunnel dnstt-client
+nano config.yaml  # Edit settings
+./dns-tunnel
+```
+
+### Quick Start (macOS M1/M2/M3)
+```bash
+tar xzf dns-tunnel-macos-arm64-v1.0.0.tar.gz
+chmod +x dns-tunnel dnstt-client
+xattr -d com.apple.quarantine dns-tunnel dnstt-client  # Remove quarantine
 nano config.yaml  # Edit settings
 ./dns-tunnel
 ```
