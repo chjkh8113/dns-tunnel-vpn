@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 
 	"github.com/chjkh8113/dns-tunnel-vpn/internal/app"
 	"github.com/chjkh8113/dns-tunnel-vpn/internal/config"
@@ -34,22 +35,81 @@ var (
 	BuildTime = "unknown"
 )
 
+// findConfigFile searches for config file in common locations
+func findConfigFile() string {
+	// Get executable directory
+	exePath, err := os.Executable()
+	if err == nil {
+		exeDir := filepath.Dir(exePath)
+
+		// Search paths relative to executable
+		searchPaths := []string{
+			filepath.Join(exeDir, "configs", "dns-tunnel.yaml"),
+			filepath.Join(exeDir, "config.yaml"),
+			filepath.Join(exeDir, "dns-tunnel.yaml"),
+		}
+
+		for _, p := range searchPaths {
+			if _, err := os.Stat(p); err == nil {
+				return p
+			}
+		}
+	}
+
+	// Search in current working directory
+	cwd, err := os.Getwd()
+	if err == nil {
+		cwdPaths := []string{
+			filepath.Join(cwd, "configs", "dns-tunnel.yaml"),
+			filepath.Join(cwd, "config.yaml"),
+			filepath.Join(cwd, "dns-tunnel.yaml"),
+		}
+
+		for _, p := range cwdPaths {
+			if _, err := os.Stat(p); err == nil {
+				return p
+			}
+		}
+	}
+
+	// Search in user home directory
+	home, err := os.UserHomeDir()
+	if err == nil {
+		homePaths := []string{
+			filepath.Join(home, ".dns-tunnel", "config.yaml"),
+			filepath.Join(home, ".config", "dns-tunnel", "config.yaml"),
+		}
+
+		for _, p := range homePaths {
+			if _, err := os.Stat(p); err == nil {
+				return p
+			}
+		}
+	}
+
+	return ""
+}
+
 func main() {
 	var (
 		configPath  string
 		showVersion bool
 	)
 
-	flag.StringVar(&configPath, "config", "", "Path to configuration file (required)")
+	flag.StringVar(&configPath, "config", "", "Path to configuration file (optional, auto-detected)")
 	flag.BoolVar(&showVersion, "version", false, "Show version information")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "dns-tunnel - Unified DNS Tunnel VPN Client\n\n")
 		fmt.Fprintf(os.Stderr, "Usage:\n")
-		fmt.Fprintf(os.Stderr, "  %s -config <config.yaml>\n\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s [options]\n\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "Options:\n")
 		flag.PrintDefaults()
-		fmt.Fprintf(os.Stderr, "\nExample:\n")
-		fmt.Fprintf(os.Stderr, "  %s -config /etc/dns-tunnel/config.yaml\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "\nConfig file search order:\n")
+		fmt.Fprintf(os.Stderr, "  1. -config flag (if provided)\n")
+		fmt.Fprintf(os.Stderr, "  2. <exe_dir>/configs/dns-tunnel.yaml\n")
+		fmt.Fprintf(os.Stderr, "  3. <exe_dir>/config.yaml\n")
+		fmt.Fprintf(os.Stderr, "  4. <cwd>/configs/dns-tunnel.yaml\n")
+		fmt.Fprintf(os.Stderr, "  5. ~/.dns-tunnel/config.yaml\n")
 	}
 	flag.Parse()
 
@@ -59,11 +119,14 @@ func main() {
 		os.Exit(0)
 	}
 
-	// Require config file
+	// Auto-detect config file if not provided
 	if configPath == "" {
-		fmt.Fprintf(os.Stderr, "Error: -config flag is required\n\n")
-		flag.Usage()
-		os.Exit(1)
+		configPath = findConfigFile()
+		if configPath == "" {
+			fmt.Fprintf(os.Stderr, "Error: No config file found\n\n")
+			flag.Usage()
+			os.Exit(1)
+		}
 	}
 
 	// Configure logging
